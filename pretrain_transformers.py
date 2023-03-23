@@ -43,6 +43,10 @@ from transformers import (
 )
 from torch.utils.tensorboard import SummaryWriter
 
+from peft import LoraConfig
+
+
+
 logger = logging.getLogger(__name__)
 
 MODEL_CONFIG_CLASSES = list(MODEL_WITH_LM_HEAD_MAPPING.keys())
@@ -569,6 +573,13 @@ def main():
              "step number",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Avoid using CUDA when available")
+    
+    #lora args
+    parser.add_argument("--lora", action="store_true", help="Use lora")
+    parser.add_argument("--lora_r",type=int,default=16, action="store_true", help="r in lora_config")
+    parser.add_argument("--lora_alpha",type=int,default=32, action="store_true", help="alpha in lora_config")
+    #end of lora args
+    
     parser.add_argument(
         "--overwrite_output_dir", action="store_true", help="Overwrite the content of the output directory"
     )
@@ -696,9 +707,11 @@ def main():
         # Our input block size will be the max possible for the model
     else:
         args.block_size = min(args.block_size, tokenizer.max_len)
+    
 
+    
     if args.model_name_or_path:
-        model = AutoModelWithLMHead.from_pretrained(
+        model = AutoModelWithLMHead.from_pretrained( #place lora here
             args.model_name_or_path,
             from_tf=bool(".ckpt" in args.model_name_or_path),
             config=config,
@@ -707,7 +720,18 @@ def main():
     else:
         logger.info("Training new model from scratch")
         model = AutoModelWithLMHead.from_config(config)
-
+    
+    if args.lora:
+        logger.info("Using Lora with %s lora_r and %s lora_alpha",args.lora_r,args.lora_alpha)
+        lora_config = LoraConfig(
+        r=args.lora_r, #16
+        lora_alpha=args.lora_alpha, #32
+        lora_dropout=0.05,
+        bias="none",
+        task_type="CAUSAL_LM",
+        )
+        model = peft.get_peft_model(model,lora_config)
+    
     model.to(args.device)
 
     if args.local_rank == 0:
